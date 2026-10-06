@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    *{box-sizing:border-box}body{margin:0;padding:16px;font:14px/1.65 system-ui,sans-serif;color:#172033;background:#fff}
+    h1{font-size:18px;margin:0 0 8px}h2{font-size:14px;margin:18px 0 8px}p{margin:8px 0}
+    label{display:block;margin-top:12px;font-weight:600}textarea{width:100%;padding:9px;border:1px solid #b9c3d0;border-radius:6px;font:inherit;resize:vertical}
+    button{padding:8px 12px;border:1px solid #b9c3d0;border-radius:6px;background:white;color:#172033;cursor:pointer;margin:8px 4px 0 0;font:inherit}
+    button.primary{background:#1959b8;color:white;border-color:#1959b8}button:disabled{opacity:.5;cursor:default}
+    :focus-visible{outline:2px solid #1959b8;outline-offset:2px}.status{white-space:pre-wrap;margin:12px 0}.error{color:#a02525}.note{font-size:12px;color:#54637a}
+    .draft{padding:8px;background:#fff3d2}.change{margin:10px 0;padding:10px;background:#f3f6fa;border-radius:6px;overflow-wrap:anywhere}
+    .value{white-space:pre-wrap}.change label{font-weight:400;margin-top:6px}.current{color:#54637a}details{margin-top:12px}
+  </style>
+</head>
+<body>
+  <h1>AI資料作成</h1>
+  <p>会社のデザインを使い、内容を作成・修正します。</p>
+  <div id="draft" class="draft" hidden>未承認のテンプレートです。表示確認・復元試験のために使用し、本番には使わないでください。</div>
+  <h2>1. AIへ渡す情報を用意</h2>
+  <label for="brief">目的・相手・今回の情報</label>
+  <textarea id="brief" rows="5" placeholder="何を決めてもらうか、相手の課題、確認済みの商品情報など"></textarea>
+  <label for="sources">情報の名前（1行に1つ）</label>
+  <textarea id="sources" rows="2" placeholder="商談メモ&#10;商品説明"></textarea>
+  <p class="note">本文でも同じ名前を付けてください。AIが根拠を示すために使います。</p>
+  <button id="copy">AIへの指示をコピー</button>
+  <p class="note">会社で利用できるGemini等へ貼り付けてください。</p>
+  <details id="promptDetails"><summary>コピーする指示を表示</summary><textarea id="prompt" rows="6" readonly></textarea></details>
+  <h2>2. AIの回答を確認</h2>
+  <label for="answer">回答をそのまま貼り付け</label>
+  <textarea id="answer" rows="7" placeholder="AIの回答を貼り付けてください"></textarea>
+  <button id="preview">内容を確認</button>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+  <div id="changes"></div>
+  <button id="apply" class="primary" disabled>確認した内容を反映</button>
+  <p class="note">反映後に数字・条件・根拠と、実際の表示を確認してください。PDFはSlidesのダウンロード機能を使えます。</p>
+  <script>
+    const $ = id => document.getElementById(id);
+    let review = null, pending = null, busy = false;
+    function state(message, error = false) { $('status').textContent = message; $('status').className = 'status' + (error ? ' error' : ''); }
+    function setBusy(value) {
+      busy = value; ['copy','preview'].forEach(id => $(id).disabled = value);
+      $('apply').disabled = value || !review;
+      ['brief','sources','answer'].forEach(id => $(id).disabled = value);
+    }
+    function invalidate() { review = null; pending = null; $('apply').disabled = true; $('changes').replaceChildren(); }
+    ['answer','sources'].forEach(id => $(id).addEventListener('input', invalidate));
+    function call(name, ...args) {
+      return new Promise((resolve, reject) => google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[name](...args));
+    }
+    function assertOk(result) { if (!result.ok) throw new Error(result.issues.map(i => `${i.path}: ${i.message}`).join('\n')); return result; }
+    function render(result) {
+      $('draft').hidden = !result.draft; $('changes').replaceChildren();
+      for (const change of result.changes) {
+        const row = document.createElement('div'); row.className = 'change';
+        const title = document.createElement('strong'); title.textContent = `${change.page_number}ページ / ${change.label}`; row.append(title);
+        if (result.mode === 'update') { const before = document.createElement('div'); before.className = 'current value'; before.textContent = `現在：${change.current}`; row.append(before); }
+        const after = document.createElement('div'); after.className = 'value'; after.textContent = `候補：${change.proposed}`; row.append(after);
+        if (change.conflict) {
+          const label = document.createElement('label'), choice = document.createElement('input'); choice.type = 'checkbox';
+          choice.dataset.instance = change.instance_id; choice.dataset.field = change.field;
+          label.append(choice, document.createTextNode('手修正をこの候補で上書きする（未選択なら保持）')); row.append(label);
+        }
+        $('changes').append(row);
+      }
+      state([result.mode === 'create' ? '新しい資料を作成します。' : '変更する欄を確認してください。', ...result.questions.map(q => `要確認：${q}`), ...result.warnings].join('\n'));
+    }
+    $('copy').addEventListener('click', async () => {
+      setBusy(true);
+      try {
+        const result = await call('getPrompt', $('sources').value);
+        $('draft').hidden = !result.draft;
+        $('prompt').value = result.prompt + '\n\n' + $('brief').value;
+        try { await navigator.clipboard.writeText($('prompt').value); state('指示をコピーしました。会社のAIへ貼り付けてください。'); }
+        catch { $('promptDetails').open = true; $('prompt').select(); state('指示を表示しました。選択した文章をコピーしてください。'); }
+      } catch (error) { state(error.message, true); } finally { setBusy(false); }
+    });
+    $('preview').addEventListener('click', async () => {
+      if (busy) return; setBusy(true); invalidate();
+      try { review = assertOk(await call('previewAnswer', $('answer').value, $('sources').value)); render(review); }
+      catch (error) { state(error.message, true); } finally { setBusy(false); }
+    });
+    $('apply').addEventListener('click', async () => {
+      if (busy || !review) return; setBusy(true);
+      try {
+        if (!pending) {
+          const plan = structuredClone(review.plan), overwrite = [];
+          for (const change of review.changes.filter(c => c.conflict)) {
+            const checkbox = [...$('changes').querySelectorAll('input[type=checkbox]')].find(x => x.dataset.instance === change.instance_id && x.dataset.field === change.field);
+            if (checkbox.checked) overwrite.push(`${change.instance_id}/${change.field}`);
+            else {
+              const slide = plan.slides.find(s => s.instance_id === change.instance_id);
+              slide.fields[change.field] = change.current; slide.status[change.field] = 'question'; slide.evidence[change.field] = [];
+              plan.questions.push(`手修正を保持：${change.instance_id} / ${change.field}。根拠を確認してください。`);
+            }
+          }
+          const text = JSON.stringify(plan), updated = assertOk(await call('previewAnswer', text, $('sources').value));
+          // Refuse unrelated edits after the visible review; only chosen keep/overwrite decisions may change the plan.
+          if (review.token !== (await call('previewAnswer', $('answer').value, $('sources').value)).token) throw new Error('確認後に資料が変わりました。もう一度内容を確認してください。');
+          pending = { text, token: updated.token, id: crypto.randomUUID(), overwrite };
+        }
+        const result = assertOk(await call('applyAnswer', pending.text, $('sources').value, pending.token, pending.id, pending.overwrite));
+        state(`${result.pages}ページを反映しました。表示・根拠・条件を確認してください。`);
+        review = null; pending = null; $('changes').replaceChildren();
+      } catch (error) { state(error.message + (pending ? '\n同じ反映ボタンで再試行できます。内容を変える場合は再確認してください。' : ''), true); }
+      finally { setBusy(false); }
+    });
+  </script>
+</body>
+</html>

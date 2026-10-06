@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prepare Slide Template"
+  short_description: "既存PPTXをローカルで管理する検証可能なテンプレートへ整備する"
+  default_prompt: "Use $prepare-slide-template to prepare a local template pack from my existing PPTX."

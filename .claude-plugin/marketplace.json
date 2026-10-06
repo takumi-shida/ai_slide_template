@@ -1,0 +1,13 @@
+{
+  "name": "ai-slide-template",
+  "owner": {
+    "name": "takumi-shida"
+  },
+  "plugins": [
+    {
+      "name": "ai-slide-template",
+      "source": "./",
+      "description": "Local template packs and validated slide plans."
+    }
+  ]
+}

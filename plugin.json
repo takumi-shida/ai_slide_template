@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ai-slide-template",
+  "version": "0.1.0",
+  "description": "Prepare local template packs and validated slide plans while preserving company layouts.",
+  "author": {
+    "name": "takumi-shida"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/takumi-shida/ai_slide_template",
+  "keywords": [
+    "slides",
+    "templates",
+    "sales",
+    "planning"
+  ]
+}
