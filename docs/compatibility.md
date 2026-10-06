@@ -5,13 +5,15 @@
 | 環境 | 同梱するもの・経路 | 検証状況 |
 | --- | --- | --- |
 | Gemini Workspace Web | Slidesの指示コピーと回答貼り付け | サーバーとサイドバーの連携をモック試験。実Google未検証 |
-| ChatGPT Web / Claude Web | 同じコピー経路 | ローカルへの自動アクセス無し。Webプラグインの導入試験は未実施 |
+| ChatGPT Web / Claude Web | 同じコピー経路 | ブラウザでの受け渡しを想定。ChatGPT Webの直接プラグインは未実装で、リモートMCPの追加を別項目として追跡 |
 | ChatGPT Work / Codex | 標準 `plugin.json`、`skills/`、互換カタログ | Skillの構造検査と新しいエージェントによるCLI利用試験。ホストへの実インストールは未実施 |
 | GitHub Copilot CLI | 標準マニフェスト、Claude互換カタログ、共通Skill＋CLI | Linux・1.0.92で登録、導入、有効化、2つのSkillの検出に成功。モデルによる呼び出しは未検証 |
 | Claude Code | `.claude-plugin/plugin.json`、`skills/`、カタログ | Linux・2.1.291で配布用バンドルの厳格検査、登録、導入、有効化、2つのSkillの検出に成功。モデルによる呼び出しは未検証 |
 | その他Ponytailで扱うホスト | `adapters/instructions.md` と共通CLIを使う指示 | 対応候補。自動導入、各ホスト固有のプラグイン形式は未実装 |
 
 ## 共通する準備
+
+この節のローカル準備はエージェントの利用者と担当者向けです。営業のブラウザ経路には適用しません。[営業向けのブラウザ仕様](browser-workflow-spec.md)では、原本コピー・入力・AIとの受け渡し・確認・反映を主経路にしています。
 
 READMEに従い、ユーザーが選んだローカルのチェックアウトで `npm ci` を実行します。Skillの実行環境からそのCLIとパックへアクセスできる必要があります。SkillのみのインストールではCLIのビルドや認証は実行されません。
 
