@@ -4,7 +4,8 @@ var AST_END = '\n[/AI_SLIDE_TEMPLATE_STATE_V1]';
 
 function onOpen() {
   SlidesApp.getUi().createMenu('AI資料作成').addItem('作成・修正', 'showSidebar')
-    .addItem('表示確認したテンプレートを登録', 'registerCurrentTemplate').addToUi();
+    .addItem('表示確認したテンプレートを登録', 'registerCurrentTemplate')
+    .addItem('配布コピーのノートを削除', 'prepareDistributionCopy').addToUi();
 }
 function onInstall() { onOpen(); }
 function showSidebar() {
@@ -225,21 +226,30 @@ function previewAnswer(answer, sourceText) {
   });
   return { ok: true, token: prepared.token, mode: prepared.mode, plan: prepared.plan, changes: displayChanges,
     questions: prepared.plan.questions, draft: prepared.draft,
-    warnings: ['根拠の内容と表示の収まりは、反映後も確認してください。', 'ノートの機械用記録は更新に必要です。外部共有には記録を除いた配布コピーを使ってください。'] };
+    warnings: ['根拠の内容と表示の収まりは、反映後も確認してください。', '外部共有は別コピーを作り、AI資料作成メニューから配布コピーのノートを削除してください。'] };
 }
-function astRetry_(plan, requestId) {
+function astRetry_(plan, requestId, pending) {
   var slides = SlidesApp.getActivePresentation().getSlides();
   var entries = slides.map(function(slide) { return { slide: slide, state: astState_(slide) }; });
   var generated = entries.filter(function(e) { return e.state && e.state.kind === 'deck'; });
   if (!generated.length || !generated.every(function(e) { return e.state.request_id === requestId; })) return null;
-  if (generated.length !== plan.slides.length || !generated.every(function(e, i) { return e.state.instance_id === plan.slides[i].instance_id && e.state.plan_hash === astHash_(SlideCore.canonical(plan)); })) throw new Error('同じ実行IDに異なる内容は指定できません。');
+  if (entries.some(function(e) { return !e.state; })) throw new Error('再試行前にページ構成が変わっています。追加ページを含む資料を確認してください。');
+  if (generated.length !== plan.slides.length || !generated.every(function(e, i) { return e.state.instance_id === plan.slides[i].instance_id && e.state.template_id === plan.slides[i].template_id && e.state.plan_hash === astHash_(SlideCore.canonical(plan)); })) throw new Error('同じ実行IDに異なる内容は指定できません。');
   generated.forEach(function(e) {
+    if (!['rendered', 'complete'].includes(e.state.phase)) throw new Error('再試行するページが途中状態です。担当者に確認してください。');
     if (e.state.fixed_hash !== astSignature_(e.slide, e.state.bindings)) throw new Error('再試行前に資料の固定部分が変わっています。');
     Object.keys(e.state.bindings).forEach(function(k) {
       if (astHash_(astText_(astResolve_(e.slide, e.state.bindings[k]).range)) !== e.state.baseline_hashes[k]) throw new Error('再試行前に本文が変わっています。新しいプレビューを作ってください。');
     });
   });
-  entries.filter(function(e) { return e.state && e.state.kind === 'template'; }).forEach(function(e) { e.slide.remove(); });
+  var sources = entries.filter(function(e) { return e.state && e.state.kind === 'template'; });
+  sources.forEach(function(e) {
+    var spec = astCatalog_().manifest.templates.find(function(t) { return t.id === e.state.template_id; });
+    if (!spec || e.state.fixed_hash !== astSignature_(e.slide, e.state.bindings)) throw new Error('再試行前に原本の固定部分が変わっています。');
+    astBindings_(e.slide, spec);
+  });
+  astSavePending_(pending);
+  sources.forEach(function(e) { e.slide.remove(); });
   generated.forEach(function(e) { e.state.phase = 'complete'; astSave_(e.slide, e.state); });
   return { ok: true, reused: true, pages: generated.length };
 }
@@ -252,13 +262,17 @@ function applyAnswer(answer, sourceText, token, requestId, overwrite) {
     var c = astCatalog_(), parsed = SlideCore.parsePlan(answer);
     var checked = parsed.ok ? SlideCore.validatePlan(parsed.value, c, astSources_(sourceText)) : parsed;
     if (!checked.ok) return checked;
-    var retry = astRetry_(checked.value, requestId); if (retry) return retry;
+    var pending = { text: answer, sourceText: sourceText, token: token, id: requestId, overwrite: overwrite };
+    var saved = astPending_();
+    if (saved && astAscii_(saved.pending) !== astAscii_(pending)) throw new Error('前回の反映が未確認です。同じ実行を再試行するか、記録を解除して確認し直してください。');
+    var retry = astRetry_(checked.value, requestId, pending); if (retry) return astFinish_(requestId, retry);
     var p = astPrepare_(answer, sourceText);
     if (!p.ok) return p;
     if (!token || p.token !== token) throw new Error('プレビュー後に内容・資料が変わりました。もう一度確認してください。');
     var conflicts = p.changes.filter(function(ch) { return ch.conflict; });
     if (overwrite.some(function(k) { return !conflicts.some(function(ch) { return k === ch.instance_id + '/' + ch.field; }); })) throw new Error('未確認の修正対象です。');
     if (conflicts.some(function(ch) { return !overwrite.includes(ch.instance_id + '/' + ch.field); })) throw new Error('手修正した欄があります。保持する内容をAIの回答へ戻すか、欄ごとに上書きを選んでください。');
+    astSavePending_(pending);
     var planHash = astHash_(SlideCore.canonical(p.plan)), made = [], backups = [], cleanupStarted = false;
     try {
       if (p.mode === 'create') {
@@ -276,7 +290,7 @@ function applyAnswer(answer, sourceText, token, requestId, overwrite) {
           if (fixed !== astSignature_(slide, bindings)) throw new Error('反映で固定部分・書式が変わりました。');
           astSave_(slide, { schema_version: '1', kind: 'deck', pack: c.pack, instance_id: s.instance_id,
             template_id: s.template_id, bindings: bindings, fixed_hash: fixed, baseline_hashes: hashes,
-            request_id: requestId, plan_hash: planHash, phase: 'rendered' });
+            request_id: requestId, plan_hash: planHash, phase: 'rendered', working_presentation_id: SlidesApp.getActivePresentation().getId() });
         });
         cleanupStarted = true;
         p.entries.forEach(function(e) { e.slide.remove(); });
@@ -293,10 +307,10 @@ function applyAnswer(answer, sourceText, token, requestId, overwrite) {
             state.baseline_hashes[k] = astHash_(s.fields[k]);
           });
           if (state.fixed_hash !== astSignature_(e.slide, state.bindings)) throw new Error('更新で固定部分・書式が変わりました。');
-          state.phase = 'complete'; state.request_id = requestId; state.plan_hash = planHash; astSave_(e.slide, state);
+          state.phase = 'complete'; state.request_id = requestId; state.plan_hash = planHash;
+          state.working_presentation_id = SlidesApp.getActivePresentation().getId(); astSave_(e.slide, state);
         });
       }
-      return { ok: true, reused: false, pages: p.plan.slides.length, questions: p.plan.questions };
     } catch (error) {
       if (!cleanupStarted) {
         made.forEach(function(slide) { slide.remove(); });
@@ -307,5 +321,6 @@ function applyAnswer(answer, sourceText, token, requestId, overwrite) {
       }
       throw new Error(cleanupStarted ? '生成ページは保持しました。整理が未完了です。同じ回答・実行IDで再試行してください。' : '反映に失敗しました。作業コピーを確認してください。');
     }
+    return astFinish_(requestId, { ok: true, reused: false, pages: p.plan.slides.length, questions: p.plan.questions });
   } finally { lock.releaseLock(); }
 }

@@ -7,8 +7,8 @@
 | Gemini Workspace Web | Slidesの指示コピーと回答貼り付け | サーバーとサイドバーの連携をモック試験。実Google未検証 |
 | ChatGPT Web / Claude Web | 同じコピー経路 | ローカルへの自動アクセス無し。Webプラグインの導入試験は未実施 |
 | ChatGPT Work / Codex | 標準 `plugin.json`、`skills/`、互換カタログ | Skillの構造検査と新しいエージェントによるCLI利用試験。ホストへの実インストールは未実施 |
-| GitHub Copilot CLI | 標準マニフェスト、Claude互換カタログ、共通Skill＋CLI | 形式と現行の公式手順を確認。実機未検証 |
-| Claude Code | `.claude-plugin/plugin.json`、`skills/`、カタログ | 形式と公式のローカル導入方式を確認。実機未検証 |
+| GitHub Copilot CLI | 標準マニフェスト、Claude互換カタログ、共通Skill＋CLI | Linux・1.0.92で登録、導入、有効化、2つのSkillの検出に成功。モデルによる呼び出しは未検証 |
+| Claude Code | `.claude-plugin/plugin.json`、`skills/`、カタログ | Linux・2.1.291で厳格なマニフェスト検査、カタログ登録、2つのSkillの一覧取得に成功。導入は25秒でタイムアウトし、成功未確認 |
 | その他Ponytailで扱うホスト | `adapters/instructions.md` と共通CLIを使う指示 | 対応候補。自動導入、各ホスト固有のプラグイン形式は未実装 |
 
 ## 共通する準備
@@ -21,7 +21,9 @@ READMEに従い、ユーザーが選んだローカルのチェックアウト�
 
 ## 導入確認用の手順
 
-以下は公式ドキュメントに基づく**未検証の導入候補**です。ホストの管理ポリシーと `--help` を確認してから、自分の環境で試してください。
+ホストの管理ポリシーと `--help` を確認してから、自分の環境で試してください。以下でCopilotの登録・導入は検証済み、ClaudeとCodexの導入完了は未確認です。記載したバージョンは確認環境であり、最小対応バージョンを示しません。
+
+プラグインのソースには、会社パックや生成した設定を置かないコード専用のチェックアウトを使ってください。Claudeの導入試験ではソース配下の `node_modules/` がキャッシュへコピーされました。Gitの除外設定を、プラグインのコピー対象の制御として扱いません。CLIをビルドする作業場所と、機密パックの保存先は別に指定できます。
 
 Copilot CLIはローカルのカタログを登録し、プラグインを選びます。
 
@@ -31,7 +33,16 @@ copilot plugin install ai-slide-template@ai-slide-template
 copilot plugin list
 ```
 
-Claude Codeでは開発用のローカル読み込みを使えます。
+Claude Codeでは、認証やモデル呼び出しをせずにマニフェストとカタログを調べられます。この検査と一覧取得は実行済みですが、Skillの意味や実行結果の検証ではありません。
+
+```bash
+claude plugin validate /absolute/checkout/.claude-plugin/plugin.json --strict --json
+claude plugin validate /absolute/checkout/.claude-plugin/marketplace.json --strict --json
+claude plugin marketplace add /absolute/checkout
+claude plugin details ai-slide-template@ai-slide-template
+```
+
+開発用のローカル読み込みは、未検証の導入候補です。
 
 ```bash
 claude --plugin-dir /absolute/checkout
@@ -54,4 +65,6 @@ codex plugin marketplace list
 
 今後MCPを追加する場合も、同じ検証器を使い、読み取り・計画・検証・反映を別の操作にします。ローカルの標準入出力サーバーだけではWebから使えるとは主張しません。個人SaaSを必要条件にせず、組織が選ぶホスティングと認証を検討します。
 
-参考: [Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)、[Claude Code plugins](https://code.claude.com/docs/en/plugins)、[OpenAI plugin packaging](https://developers.openai.com/plugins/build/plugins)。
+確認は個別の設定ディレクトリと、公開パッケージのCLIで行いました。利用者の既存設定・認証は変更せず、AIへの問い合わせは行っていません。Copilotは `COPILOT_HOME`、Claudeは `CLAUDE_CONFIG_DIR` を使いました。Windows、macOS、企業管理ポリシー下の動作は未検証です。
+
+参考: [Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)、[Claude Code plugins](https://code.claude.com/docs/en/plugins)、[Claudeのプラグイン検査](https://code.claude.com/docs/en/plugins-reference)、[OpenAI plugin packaging](https://developers.openai.com/plugins/build/plugins)。

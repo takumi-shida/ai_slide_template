@@ -34,15 +34,19 @@
   <div id="status" class="status" role="status" aria-live="polite"></div>
   <div id="changes"></div>
   <button id="apply" class="primary" disabled>確認した内容を反映</button>
+  <button id="discard" hidden>前回の記録を解除して確認し直す</button>
+  <p class="note">反映中は再試行用に回答をこの資料の利用者別保存領域へ保存します。成功後に削除します。</p>
   <p class="note">反映後に数字・条件・根拠と、実際の表示を確認してください。PDFはSlidesのダウンロード機能を使えます。</p>
   <script>
     const $ = id => document.getElementById(id);
-    let review = null, pending = null, busy = false;
+    let review = null, pending = null, busy = false, blocked = false;
     function state(message, error = false) { $('status').textContent = message; $('status').className = 'status' + (error ? ' error' : ''); }
     function setBusy(value) {
-      busy = value; ['copy','preview'].forEach(id => $(id).disabled = value);
-      $('apply').disabled = value || !review;
-      ['brief','sources','answer'].forEach(id => $(id).disabled = value);
+      busy = value; ['copy','preview'].forEach(id => $(id).disabled = value || blocked || !!pending);
+      $('apply').disabled = value || blocked || (!review && !pending);
+      ['brief','sources','answer'].forEach(id => $(id).disabled = value || blocked || !!pending);
+      $('discard').hidden = !pending; $('discard').disabled = value || blocked;
+      $('apply').textContent = pending ? '前回の反映を再試行' : '確認した内容を反映';
     }
     function invalidate() { review = null; pending = null; $('apply').disabled = true; $('changes').replaceChildren(); }
     ['answer','sources'].forEach(id => $(id).addEventListener('input', invalidate));
@@ -64,7 +68,7 @@
         }
         $('changes').append(row);
       }
-      state([result.mode === 'create' ? '新しい資料を作成します。' : '変更する欄を確認してください。', ...result.questions.map(q => `要確認：${q}`), ...result.warnings].join('\n'));
+      state([result.mode === 'create' ? '新しい資料を作成します。' : result.mode === 'retry' ? '前回確認した内容を復元しました。' : '変更する欄を確認してください。', ...result.questions.map(q => `要確認：${q}`), ...result.warnings].join('\n'));
     }
     $('copy').addEventListener('click', async () => {
       setBusy(true);
@@ -82,7 +86,7 @@
       catch (error) { state(error.message, true); } finally { setBusy(false); }
     });
     $('apply').addEventListener('click', async () => {
-      if (busy || !review) return; setBusy(true);
+      if (busy || (!review && !pending)) return; setBusy(true);
       try {
         if (!pending) {
           const plan = structuredClone(review.plan), overwrite = [];
@@ -98,14 +102,31 @@
           const text = JSON.stringify(plan), updated = assertOk(await call('previewAnswer', text, $('sources').value));
           // Refuse unrelated edits after the visible review; only chosen keep/overwrite decisions may change the plan.
           if (review.token !== (await call('previewAnswer', $('answer').value, $('sources').value)).token) throw new Error('確認後に資料が変わりました。もう一度内容を確認してください。');
-          pending = { text, token: updated.token, id: crypto.randomUUID(), overwrite };
+          pending = { text, sourceText: $('sources').value, token: updated.token, id: crypto.randomUUID(), overwrite };
         }
-        const result = assertOk(await call('applyAnswer', pending.text, $('sources').value, pending.token, pending.id, pending.overwrite));
-        state(`${result.pages}ページを反映しました。表示・根拠・条件を確認してください。`);
+        const result = assertOk(await call('applyAnswer', pending.text, pending.sourceText, pending.token, pending.id, pending.overwrite));
+        state([`${result.pages}ページを反映しました。表示・根拠・条件を確認してください。`, ...(result.warnings || [])].join('\n'));
         review = null; pending = null; $('changes').replaceChildren();
-      } catch (error) { state(error.message + (pending ? '\n同じ反映ボタンで再試行できます。内容を変える場合は再確認してください。' : ''), true); }
+      } catch (error) { state(error.message + (pending ? '\n同じ反映ボタンで再試行できます。内容を変える場合は記録を解除して確認し直してください。' : ''), true); }
       finally { setBusy(false); }
     });
+    $('discard').addEventListener('click', async () => {
+      if (busy || !pending) return; setBusy(true);
+      try { assertOk(await call('clearPendingRequest', pending.id)); invalidate(); state('再試行の記録を解除しました。資料の内容を確認し、新しい候補を確認してください。'); }
+      catch (error) { state(error.message, true); } finally { setBusy(false); }
+    });
+    async function restorePending() {
+      setBusy(true);
+      try {
+        const result = assertOk(await call('getPendingRequest'));
+        if (result.pending) {
+          pending = result.pending; $('answer').value = pending.text; $('sources').value = pending.sourceText;
+          render(result.preview);
+        }
+      } catch (error) { blocked = true; state(error.message + '\n終了後にサイドバーを開き直すか、担当者に確認してください。', true); }
+      finally { setBusy(false); }
+    }
+    const startup = restorePending();
   </script>
 </body>
 </html>

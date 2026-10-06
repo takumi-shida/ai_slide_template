@@ -6,6 +6,7 @@ class Range {
   constructor(owner,key){this.owner=owner;this.key=key;}
   asString(){return this.owner[this.key]+'\n';}
   setText(value){if(this.owner.runtime.failText===value){this.owner.runtime.failText=null;throw new Error('injected write failure');}this.owner[this.key]=value;return this;}
+  clear(){if(this.owner.runtime.failClear===this.owner.id){this.owner.runtime.failClear=null;throw new Error('injected clear failure');}this.setText('');}
   getTextStyle(){return {getFontFamily:()=> 'Arial',getFontSize:()=>20,isBold:()=>false,isItalic:()=>false,getForegroundColor:()=>({getColorType:()=> 'RGB',asRgbColor:()=>({asHexString:()=> '#152B46'})})};}
 }
 class Shape {
@@ -37,21 +38,30 @@ class Slide {
   remove(){if(this.runtime.failRemove===this.id){this.runtime.failRemove=null;throw new Error('injected cleanup failure');}this.runtime.slides.splice(this.runtime.slides.indexOf(this),1);}
 }
 export function runtime(catalog,variant='shapes') {
-  const r={slides:[],failText:null,failRemove:null,locked:false};
+  const r={slides:[],failText:null,failRemove:null,failClear:null,failProperty:null,failDelete:null,failFlush:false,locked:false,properties:{},presentationId:'presentation-'+(++counter),userId:'user-1',flushes:0};
   r.slides=[new Slide(r,['FIXED BRAND','{{title}}','{{body}}'])];
   if(variant==='table')r.slides[0].shapes[2]=new Table(r,'{{body}}');
   if(variant==='group')r.slides[0].shapes[2]=new Group(r,[r.slides[0].shapes[2]]);
-  const ui={Button:{YES:'YES'},ButtonSet:{YES_NO:'YES_NO'},alert:()=> 'YES'};
+  r.confirm='YES';const ui={Button:{YES:'YES'},ButtonSet:{YES_NO:'YES_NO'},alert:()=>r.confirm};
+  const store=()=>{
+    const props=r.properties[r.userId]??=(Object.create(null));
+    function write(key,value){if(r.failProperty===key||r.failProperty==='any'){r.failProperty=null;throw new Error('injected property failure');}assertSize(value);props[key]=value;}
+    function assertSize(value){if(Buffer.byteLength(value)>9000)throw new Error('Mock property quota exceeded');}
+    return {getProperty:key=>props[key]??null,getProperties:()=>({...props}),setProperty:(key,value)=>write(key,value),setProperties:(values,clear)=>{if(clear)throw new Error('Must not delete unrelated properties');for(const [key,value]of Object.entries(values))write(key,value);},deleteProperty:key=>{if(r.failDelete===key){r.failDelete=null;throw new Error('injected cleanup failure');}delete props[key];}};
+  };
   r.context=vm.createContext({AST_CATALOG:structuredClone(catalog),
-    SlidesApp:{getActivePresentation:()=>({getSlides:()=> [...r.slides]}),getUi:()=>ui},
+    SlidesApp:{getActivePresentation:()=>({getSlides:()=> [...r.slides],getId:()=>r.presentationId,saveAndClose:()=>{if(r.failFlush){r.failFlush=false;throw new Error('injected save failure');}r.flushes++;}}),getUi:()=>ui},
+    PropertiesService:{getUserProperties:store},
     LockService:{getDocumentLock:()=>({tryLock:()=>{if(r.locked)return false;r.locked=true;return true;},releaseLock:()=>{r.locked=false;}})},
     Utilities:{DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},computeDigest:(_,text)=>[...createHash('sha256').update(text).digest()]}
   });
   vm.runInContext(readFileSync('build/Core.gs','utf8'),r.context);
   vm.runInContext(readFileSync('apps/slides-addon/Addon.gs','utf8'),r.context);
+  vm.runInContext(readFileSync('apps/slides-addon/Recovery.gs','utf8'),r.context);
   r.call=(name,...args)=>r.context[name](...args);
   r.register=()=>r.call('registerCurrentTemplate');
   r.preview=p=>r.call('previewAnswer',JSON.stringify(p),'brief');
   r.apply=(p,token,id='request-0001',overwrite=[])=>r.call('applyAnswer',JSON.stringify(p),'brief',token,id,overwrite);
+  r.copy=()=>{const copy=runtime(catalog,variant);copy.slides=r.slides.map(s=>{const slide=new Slide(copy,[],s.notes);slide.shapes=s.shapes.map(e=>cloneElement(e,copy));return slide;});return copy;};
   return r;
 }

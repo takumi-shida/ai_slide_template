@@ -106,6 +106,7 @@ Approval must follow human rendering and restore checks. --draft is for testing 
     await mkdir(out, { recursive: false });
     for (const [src, dst] of [
       ['build/Core.gs', 'Core.gs'], ['apps/slides-addon/Addon.gs', 'Addon.gs'],
+      ['apps/slides-addon/Recovery.gs', 'Recovery.gs'],
       ['apps/slides-addon/Sidebar.html', 'Sidebar.html'], ['apps/slides-addon/appsscript.json', 'appsscript.json']
     ]) await writeFile(join(out, dst), await readFile(join(root, src)));
     await writeFile(join(out, 'Catalog.gs'), '/** Company-private generated configuration. Do not publish. */\nvar AST_CATALOG = ' + canonical(catalog) + ';\n');
