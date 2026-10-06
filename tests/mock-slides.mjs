@@ -44,8 +44,8 @@ export function runtime(catalog,variant='shapes') {
   if(variant==='group')r.slides[0].shapes[2]=new Group(r,[r.slides[0].shapes[2]]);
   r.confirm='YES';const ui={Button:{YES:'YES'},ButtonSet:{YES_NO:'YES_NO'},alert:()=>r.confirm};
   const store=()=>{
-    const props=r.properties[r.userId]??=(Object.create(null));
-    function write(key,value){if(r.failProperty===key||r.failProperty==='any'){r.failProperty=null;throw new Error('injected property failure');}assertSize(value);props[key]=value;}
+    const props=r.properties[r.userId]??Object.create(null);
+    function write(key,value){if(r.failProperty===key||r.failProperty==='any'){r.failProperty=null;throw new Error('injected property failure');}assertSize(value);r.properties[r.userId]=props;props[key]=value;}
     function assertSize(value){if(Buffer.byteLength(value)>9000)throw new Error('Mock property quota exceeded');}
     return {getProperty:key=>props[key]??null,getProperties:()=>({...props}),setProperty:(key,value)=>write(key,value),setProperties:(values,clear)=>{if(clear)throw new Error('Must not delete unrelated properties');for(const [key,value]of Object.entries(values))write(key,value);},deleteProperty:key=>{if(r.failDelete===key){r.failDelete=null;throw new Error('injected cleanup failure');}delete props[key];}};
   };
@@ -58,6 +58,7 @@ export function runtime(catalog,variant='shapes') {
   vm.runInContext(readFileSync('build/Core.gs','utf8'),r.context);
   vm.runInContext(readFileSync('apps/slides-addon/Addon.gs','utf8'),r.context);
   vm.runInContext(readFileSync('apps/slides-addon/Recovery.gs','utf8'),r.context);
+  vm.runInContext(readFileSync('apps/slides-addon/Diagnostics.gs','utf8'),r.context);
   r.call=(name,...args)=>r.context[name](...args);
   r.register=()=>r.call('registerCurrentTemplate');
   r.preview=p=>r.call('previewAnswer',JSON.stringify(p),'brief');

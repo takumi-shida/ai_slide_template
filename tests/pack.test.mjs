@@ -82,6 +82,7 @@ test('production bundle requires approval; approval requires attestation and rea
   assert.equal(run('build-google','--pack',f.pack,'--out',out).status,1);
   assert.equal(run('build-google','--pack',f.pack,'--out',out,'--draft').status,0);
   assert.match(await readFile(join(out,'Recovery.gs'),'utf8'), /function getPendingRequest\(/);
+  assert.match(await readFile(join(out,'Diagnostics.gs'),'utf8'), /function inspectCurrentPresentation\(/);
   assert.equal(run('build-google','--pack',f.pack,'--out',out,'--draft').status,1);
   const ref=join(f.root,'rendered.pdf'); await writeFile(ref,'Not a PDF');
   const approve=['approve','--pack',f.pack,'--by','Unit test only','--notes','Synthetic validation fixture; not rendering evidence','--reference',ref];

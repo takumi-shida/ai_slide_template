@@ -5,6 +5,7 @@ var AST_END = '\n[/AI_SLIDE_TEMPLATE_STATE_V1]';
 function onOpen() {
   SlidesApp.getUi().createMenu('AI資料作成').addItem('作成・修正', 'showSidebar')
     .addItem('表示確認したテンプレートを登録', 'registerCurrentTemplate')
+    .addItem('設定・状態を確認', 'showTemplateDiagnostics')
     .addItem('配布コピーのノートを削除', 'prepareDistributionCopy').addToUi();
 }
 function onInstall() { onOpen(); }

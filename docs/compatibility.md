@@ -8,7 +8,7 @@
 | ChatGPT Web / Claude Web | 同じコピー経路 | ローカルへの自動アクセス無し。Webプラグインの導入試験は未実施 |
 | ChatGPT Work / Codex | 標準 `plugin.json`、`skills/`、互換カタログ | Skillの構造検査と新しいエージェントによるCLI利用試験。ホストへの実インストールは未実施 |
 | GitHub Copilot CLI | 標準マニフェスト、Claude互換カタログ、共通Skill＋CLI | Linux・1.0.92で登録、導入、有効化、2つのSkillの検出に成功。モデルによる呼び出しは未検証 |
-| Claude Code | `.claude-plugin/plugin.json`、`skills/`、カタログ | Linux・2.1.291で厳格なマニフェスト検査、カタログ登録、2つのSkillの一覧取得に成功。導入は25秒でタイムアウトし、成功未確認 |
+| Claude Code | `.claude-plugin/plugin.json`、`skills/`、カタログ | Linux・2.1.291で配布用バンドルの厳格検査、登録、導入、有効化、2つのSkillの検出に成功。モデルによる呼び出しは未検証 |
 | その他Ponytailで扱うホスト | `adapters/instructions.md` と共通CLIを使う指示 | 対応候補。自動導入、各ホスト固有のプラグイン形式は未実装 |
 
 ## 共通する準備
@@ -21,31 +21,39 @@ READMEに従い、ユーザーが選んだローカルのチェックアウト�
 
 ## 導入確認用の手順
 
-ホストの管理ポリシーと `--help` を確認してから、自分の環境で試してください。以下でCopilotの登録・導入は検証済み、ClaudeとCodexの導入完了は未確認です。記載したバージョンは確認環境であり、最小対応バージョンを示しません。
+ホストの管理ポリシーと `--help` を確認してから、自分の環境で試してください。以下でCopilot・Claudeの配布用バンドルの登録・導入は検証済み、Codexの導入完了は未確認です。記載したバージョンは確認環境であり、最小対応バージョンを示しません。
 
-プラグインのソースには、会社パックや生成した設定を置かないコード専用のチェックアウトを使ってください。Claudeの導入試験ではソース配下の `node_modules/` がキャッシュへコピーされました。Gitの除外設定を、プラグインのコピー対象の制御として扱いません。CLIをビルドする作業場所と、機密パックの保存先は別に指定できます。
+プラグインのソースには `build-plugin` で生成した配布用フォルダを使ってください。固定した公開10ファイルだけをコピーし、CLI・依存関係・パック・Google設定・package.jsonを含めません。会社パックを使わず生成でき、既存の出力先は上書きしません。
+
+```bash
+node /absolute/checkout/bin/ai-slide-template.js build-plugin --out /absolute/plugin-bundle
+```
+
+Claudeの開発チェックアウトからの導入試験では `node_modules/` のコピーと25秒のタイムアウトを確認しました。配布用バンドルでは導入に成功しました。旧方式のタイムアウトの直接原因は断定しません。Gitの除外設定をプラグインのコピー対象の制御として扱わず、配布用フォルダに会社パックや生成設定を追加しないでください。CLIをビルドする作業場所と、機密パックの保存先は別に指定できます。
 
 Copilot CLIはローカルのカタログを登録し、プラグインを選びます。
 
 ```bash
-copilot plugin marketplace add /absolute/checkout
+copilot plugin marketplace add /absolute/plugin-bundle
 copilot plugin install ai-slide-template@ai-slide-template
 copilot plugin list
 ```
 
-Claude Codeでは、認証やモデル呼び出しをせずにマニフェストとカタログを調べられます。この検査と一覧取得は実行済みですが、Skillの意味や実行結果の検証ではありません。
+Claude Codeでは、認証やモデル呼び出しをせずに導入できます。以下は実行済みですが、Skillの意味やAIによる実行結果の検証ではありません。
 
 ```bash
-claude plugin validate /absolute/checkout/.claude-plugin/plugin.json --strict --json
-claude plugin validate /absolute/checkout/.claude-plugin/marketplace.json --strict --json
-claude plugin marketplace add /absolute/checkout
+claude plugin validate /absolute/plugin-bundle/.claude-plugin/plugin.json --strict --json
+claude plugin validate /absolute/plugin-bundle/.claude-plugin/marketplace.json --strict --json
+claude plugin marketplace add /absolute/plugin-bundle
+claude plugin install ai-slide-template@ai-slide-template
+claude plugin list --json
 claude plugin details ai-slide-template@ai-slide-template
 ```
 
 開発用のローカル読み込みは、未検証の導入候補です。
 
 ```bash
-claude --plugin-dir /absolute/checkout
+claude --plugin-dir /absolute/plugin-bundle
 ```
 
 セッションで `/ai-slide-template:create-slides` または `/ai-slide-template:prepare-slide-template` の検出と呼び出しを確認します。
@@ -53,7 +61,7 @@ claude --plugin-dir /absolute/checkout
 Codexでは公式のローカルカタログ追加経路を使い、ChatGPTデスクトップのPlugins画面でそのソースを選び、導入を確認します。
 
 ```bash
-codex plugin marketplace add /absolute/checkout
+codex plugin marketplace add /absolute/plugin-bundle
 codex plugin marketplace list
 ```
 

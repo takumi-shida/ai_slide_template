@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { canonical, parsePlan, validatePlan, validateRelease, buildPrompt, emptyPlan } from './core/index.js';
 import type { Release } from './core/types.js';
 import { assertReference, importPack, readPack, sha256 } from './pack/index.js';
+import { buildPluginBundle } from './host/bundle.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const [command, ...args] = process.argv.slice(2);
@@ -41,6 +42,7 @@ prompt --pack private-packs/example [--sources source-ids.json]
 validate --pack private-packs/example --plan answer.json [--sources source-ids.json]
 approve --pack private-packs/example --by NAME --notes NOTES --reference rendered.pdf --attest-rendered-and-restored
 build-google --pack private-packs/example --out work/google [--draft]
+build-plugin --out work/plugin-bundle
 
 No model API, remote server, or Google credential is required for local commands.
 build-google creates a bound Apps Script project for manual deployment to a converted template copy.
@@ -51,10 +53,16 @@ Approval must follow human rendering and restore checks. --draft is for testing 
     import: ['--input', '--out', '--id'], inspect: ['--pack'], check: ['--pack'], outline: ['--pack'],
     prompt: ['--pack', '--sources'], validate: ['--pack', '--plan', '--sources'],
     approve: ['--pack', '--by', '--notes', '--reference', '--attest-rendered-and-restored'],
-    'build-google': ['--pack', '--out', '--draft']
+    'build-google': ['--pack', '--out', '--draft'], 'build-plugin': ['--out']
   };
   if (!allowed[command]) throw new Error(`Unknown command: ${command}`);
   for (const key of flags.keys()) if (!allowed[command].includes(key)) throw new Error(`Unsupported option for ${command}: ${key}`);
+  if (command === 'build-plugin') {
+    const out = resolve(requireFlag('--out'));
+    const files = await buildPluginBundle(root, out);
+    output({ ok: true, out, files, next: 'Register this public-only bundle with your plugin host. Install the CLI separately and explicitly choose a private template pack.' });
+    return;
+  }
   if (command === 'import') {
     const out = resolve(requireFlag('--out'));
     await mkdir(dirname(out), { recursive: true });
@@ -103,10 +111,12 @@ Approval must follow human rendering and restore checks. --draft is for testing 
   if (command === 'build-google') {
     if (!catalog.release && !flags.has('--draft')) throw new Error('Draft pack. Test with --draft; approve after rendering/restore checks before production deployment.');
     const out = resolve(requireFlag('--out'));
+    await mkdir(dirname(out), { recursive: true });
     await mkdir(out, { recursive: false });
     for (const [src, dst] of [
       ['build/Core.gs', 'Core.gs'], ['apps/slides-addon/Addon.gs', 'Addon.gs'],
       ['apps/slides-addon/Recovery.gs', 'Recovery.gs'],
+      ['apps/slides-addon/Diagnostics.gs', 'Diagnostics.gs'],
       ['apps/slides-addon/Sidebar.html', 'Sidebar.html'], ['apps/slides-addon/appsscript.json', 'appsscript.json']
     ]) await writeFile(join(out, dst), await readFile(join(root, src)));
     await writeFile(join(out, 'Catalog.gs'), '/** Company-private generated configuration. Do not publish. */\nvar AST_CATALOG = ' + canonical(catalog) + ';\n');

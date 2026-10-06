@@ -2,7 +2,7 @@
 
 既存資料のデザインを複製し、登録した文章欄だけをAIの提案で更新するOSSです。営業・企画・技術説明で、会社の承認済みレイアウトを再利用します。
 
-**v0.1は試行用の初期実装です。** CLIと変更処理の自動テスト、Copilot CLIでのプラグイン導入を確認しています。実際のGoogle Slidesでの描画、会社の管理設定、各AIによるSkill実行は未検証です。「デザインを必ず再現できる」「作成時間が短縮した」とはまだ主張しません。
+**v0.1は試行用の初期実装です。** CLIと変更処理の自動テスト、Copilot CLI・Claude Codeでのプラグイン導入を確認しています。実際のGoogle Slidesでの描画、会社の管理設定、各AIによるSkill実行は未検証です。「デザインを必ず再現できる」「作成時間が短縮した」とはまだ主張しません。
 
 ## 何を分担するか
 
@@ -39,6 +39,14 @@ node bin/ai-slide-template.js validate --pack work/demo/pack --plan work/demo/pl
 
 これはローカル検証までです。実際の資料の表示には[Google Slidesのセットアップ](docs/google-slides-setup.md)が必要です。デモを本番承認する処理はありません。
 
+実Googleでの試験には、AIを使わずに正常・最大文字数・改行・繰り返し・更新・拒否すべき回答を作るコマンドを使えます。
+
+```bash
+npm run smoke -- work/google-smoke
+```
+
+架空PPTX、7つの設置ファイル、9つの回答サンプル、`RUNBOOK.md` を生成します。実Googleへの設置・反映・描画確認は担当者が行います。同じ出力先は上書きしません。
+
 ## 会社資料から作る
 
 1. 許可された非公開の作業場所に原本のコピーを置き、過去顧客の文章・ノート・埋め込みデータ・外部リンクを整理します。固定のページ番号や案件名も確認してください。
@@ -65,6 +73,19 @@ node bin/ai-slide-template.js build-google --pack /private/packs/company-v1 --ou
 GeminiはWorkspaceのWeb画面を使い、CLIやモデルAPIを前提にしません。Slidesサイドバーで指示をコピーし、Geminiへ貼り付け、回答をそのまま戻します。一般の利用者がJSONを手で編集する必要はありません。ChatGPT Web、Claude Webにも同じ経路を使えます。組織が許可した情報だけを、それぞれ許可されたAIへ渡してください。
 
 CLIを使えるエージェント向けに、`create-slides` と `prepare-slide-template` の2つのSkill、標準 `plugin.json`、Claude互換のマニフェストを同梱します。これはPonytailを参考にした共通資産と薄いホスト対応の構成です。**プラグインを入れただけでCLIの依存関係がインストールされるわけではありません。** [対応状況](docs/compatibility.md)を確認してください。v0.1のエージェントは検証済みの計画まで作り、Slidesへの反映にはサイドバーを使います。
+
+導入先には公開資産だけの配布用フォルダを指定します。開発チェックアウト・CLI・会社パックは別に管理します。
+
+```bash
+node bin/ai-slide-template.js build-plugin --out work/plugin-bundle
+copilot plugin marketplace add /absolute/checkout/work/plugin-bundle
+copilot plugin install ai-slide-template@ai-slide-template
+# Claude Codeでも同じ配布用フォルダを使う
+claude plugin marketplace add /absolute/checkout/work/plugin-bundle
+claude plugin install ai-slide-template@ai-slide-template
+```
+
+配布用フォルダはマニフェストとSkill等の10ファイルだけを含み、依存関係・CLIコード・会社パック・認証情報はコピーしません。エージェントには別にCLIと非公開パックの場所を指定します。
 
 ## 初期版の範囲
 
