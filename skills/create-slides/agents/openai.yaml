@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Slides"
+  short_description: "既存テンプレートの欄と容量を守り、根拠付きの資料案を作成する"
+  default_prompt: "Use $create-slides to prepare a deck plan from my local approved template pack."
